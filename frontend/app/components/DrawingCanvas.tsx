@@ -9,6 +9,9 @@ interface DrawingCanvasProps {
   onMouseUp: () => void;
   onMouseLeave: () => void;
   onCanvasReady?: () => void;
+  onTouchStart?: (e: React.TouchEvent<HTMLCanvasElement>) => void;
+  onTouchMove?: (e: React.TouchEvent<HTMLCanvasElement>) => void;
+  onTouchEnd?: () => void;
 }
 
 export default function DrawingCanvas({
@@ -18,6 +21,9 @@ export default function DrawingCanvas({
   onMouseUp,
   onMouseLeave,
   onCanvasReady,
+  onTouchStart,
+  onTouchMove,
+  onTouchEnd,
 }: DrawingCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -70,6 +76,9 @@ export default function DrawingCanvas({
         onMouseMove={onMouseMove}
         onMouseUp={onMouseUp}
         onMouseLeave={onMouseLeave}
+        onTouchStart={onTouchStart}
+        onTouchMove={onTouchMove}
+        onTouchEnd={onTouchEnd}
       />
     </div>
   );

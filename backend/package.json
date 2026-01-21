@@ -1,7 +1,7 @@
 {
   "name": "flam-backend",
   "version": "1.0.0",
-  "description": "Express.js server for Flam",
+  "description": "Backend for collaborative drawing canvas",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
@@ -12,9 +12,7 @@
   "license": "ISC",
   "dependencies": {
     "express": "^4.18.2",
-    "cors": "^2.8.5"
-  },
-  "devDependencies": {
-    "nodemon": "^3.0.2"
+    "cors": "^2.8.5",
+    "socket.io": "^4.7.2"
   }
 }

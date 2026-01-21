@@ -34,6 +34,11 @@ interface UseCanvasReturn {
   addExternalStroke: (stroke: Stroke) => void;
   redrawCanvas: () => void;
   initializeContext: () => void;
+  loadStrokes: (strokes: Stroke[]) => void;
+  removeLastStroke: () => void;
+  getCurrentStroke: () => Stroke | null;
+  startDrawingTouch: (e: React.TouchEvent<HTMLCanvasElement>) => void;
+  drawTouch: (e: React.TouchEvent<HTMLCanvasElement>) => void;
 }
 
 export function useCanvas({ userId, onStrokeComplete, onCursorMove }: UseCanvasProps): UseCanvasReturn {
@@ -131,6 +136,19 @@ export function useCanvas({ userId, onStrokeComplete, onCursorMove }: UseCanvasP
     return {
       x: e.clientX - rect.left,
       y: e.clientY - rect.top,
+    };
+  }, []);
+
+  // Get touch position relative to canvas
+  const getTouchPos = useCallback((e: React.TouchEvent<HTMLCanvasElement>): Point => {
+    const canvas = canvasRef.current;
+    if (!canvas) return { x: 0, y: 0 };
+
+    const rect = canvas.getBoundingClientRect();
+    const touch = e.touches[0];
+    return {
+      x: touch.clientX - rect.left,
+      y: touch.clientY - rect.top,
     };
   }, []);
 
@@ -285,21 +303,108 @@ export function useCanvas({ userId, onStrokeComplete, onCursorMove }: UseCanvasP
   const addExternalStroke = useCallback(
     (stroke: Stroke) => {
       strokesRef.current.push(stroke);
+      redrawCanvas();
+    },
+    [redrawCanvas],
+  );
 
-      // Add to history
-      historyRef.current = historyRef.current.slice(0, historyIndexRef.current + 1);
-      historyRef.current.push({
-        type: "add",
-        stroke: stroke,
-        userId: stroke.userId,
-        timestamp: stroke.timestamp,
-      });
+  // Load multiple strokes at once (for initial canvas state)
+  const loadStrokes = useCallback(
+    (strokes: Stroke[]) => {
+      strokesRef.current = strokes;
+      historyRef.current = strokes.map((s) => ({
+        type: "add" as const,
+        stroke: s,
+        userId: s.userId,
+        timestamp: s.timestamp,
+      }));
       historyIndexRef.current = historyRef.current.length - 1;
       updateHistoryState();
-
       redrawCanvas();
     },
     [redrawCanvas, updateHistoryState],
+  );
+
+  // Remove last stroke (for undo sync)
+  const removeLastStroke = useCallback(() => {
+    if (strokesRef.current.length > 0) {
+      strokesRef.current.pop();
+      historyIndexRef.current = Math.max(-1, historyIndexRef.current - 1);
+      updateHistoryState();
+      redrawCanvas();
+    }
+  }, [redrawCanvas, updateHistoryState]);
+
+  // Get current stroke data for broadcasting while drawing
+  const getCurrentStroke = useCallback(() => {
+    return currentStrokeRef.current;
+  }, []);
+
+  // Touch event handlers for mobile support
+  const startDrawingTouch = useCallback(
+    (e: React.TouchEvent<HTMLCanvasElement>) => {
+      e.preventDefault();
+      const point = getTouchPos(e);
+
+      currentStrokeRef.current = {
+        id: generateId(),
+        points: [point],
+        color: color,
+        width: strokeWidth,
+        tool: tool,
+        userId: userId,
+        timestamp: Date.now(),
+      };
+
+      setIsDrawing(true);
+      onCursorMove?.(point);
+    },
+    [color, strokeWidth, tool, userId, getTouchPos, onCursorMove],
+  );
+
+  const drawTouch = useCallback(
+    (e: React.TouchEvent<HTMLCanvasElement>) => {
+      e.preventDefault();
+      const point = getTouchPos(e);
+      onCursorMove?.(point);
+
+      if (!isDrawing || !currentStrokeRef.current) return;
+
+      currentStrokeRef.current.points.push(point);
+
+      const ctx = contextRef.current;
+      if (!ctx) return;
+
+      const points = currentStrokeRef.current.points;
+      if (points.length < 2) return;
+
+      ctx.beginPath();
+      ctx.strokeStyle = tool === "eraser" ? "#ffffff" : color;
+      ctx.lineWidth = strokeWidth;
+      ctx.lineCap = "round";
+      ctx.lineJoin = "round";
+
+      const len = points.length;
+      if (len >= 3) {
+        const prev = points[len - 3];
+        const curr = points[len - 2];
+        const next = points[len - 1];
+
+        const midX1 = (prev.x + curr.x) / 2;
+        const midY1 = (prev.y + curr.y) / 2;
+        const midX2 = (curr.x + next.x) / 2;
+        const midY2 = (curr.y + next.y) / 2;
+
+        ctx.moveTo(midX1, midY1);
+        ctx.quadraticCurveTo(curr.x, curr.y, midX2, midY2);
+      } else {
+        ctx.moveTo(points[len - 2].x, points[len - 2].y);
+        ctx.lineTo(points[len - 1].x, points[len - 1].y);
+      }
+
+      ctx.stroke();
+    },
+    [isDrawing, tool, color, strokeWidth, getTouchPos, onCursorMove],
   );
 
   return {
@@ -322,5 +427,10 @@ export function useCanvas({ userId, onStrokeComplete, onCursorMove }: UseCanvasP
     addExternalStroke,
     redrawCanvas,
     initializeContext,
+    loadStrokes,
+    removeLastStroke,
+    getCurrentStroke,
+    startDrawingTouch,
+    drawTouch,
   };
 }

@@ -2,13 +2,13 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useCanvas } from "./hooks/useCanvas";
+import { useSocket } from "./hooks/useSocket";
 import Toolbar from "./components/Toolbar";
 import UsersPanel from "./components/UsersPanel";
 import CursorsOverlay from "./components/CursorsOverlay";
 import DrawingCanvas from "./components/DrawingCanvas";
-import { User, CursorPosition, Point } from "./types";
+import { User, Point, Stroke } from "./types";
 
-// Generate random username
 function generateUsername(): string {
   const adjectives = ["Happy", "Clever", "Swift", "Bright", "Cool", "Wild", "Calm", "Bold"];
   const nouns = ["Panda", "Tiger", "Eagle", "Dolphin", "Fox", "Wolf", "Bear", "Hawk"];
@@ -18,26 +18,21 @@ function generateUsername(): string {
   return `${adj}${noun}${num}`;
 }
 
-// Generate random color for user
 function generateUserColor(): string {
   const colors = ["#ef4444", "#f97316", "#eab308", "#22c55e", "#3b82f6", "#8b5cf6", "#ec4899"];
   return colors[Math.floor(Math.random() * colors.length)];
 }
 
-// Generate simple user ID
 function generateUserId(): string {
   return "user_" + Date.now().toString(36) + Math.random().toString(36).substr(2, 5);
 }
 
+// Default room for now - can be extended to support multiple rooms
+const ROOM_ID = "main-room";
+
 export default function Home() {
-  // Current user state
   const [currentUser, setCurrentUser] = useState<User | null>(null);
 
-  // Mock other users for UI demonstration (will be replaced with websocket data)
-  const [users, setUsers] = useState<User[]>([]);
-  const [cursors, setCursors] = useState<CursorPosition[]>([]);
-
-  // Initialize current user on mount
   useEffect(() => {
     const user: User = {
       id: generateUserId(),
@@ -47,26 +42,6 @@ export default function Home() {
       isDrawing: false,
     };
     setCurrentUser(user);
-    setUsers([user]);
-  }, []);
-
-  // Handle cursor movement - will send to websocket later
-  const handleCursorMove = useCallback(
-    (position: Point) => {
-      if (!currentUser) return;
-
-      // Update local cursor position
-      setUsers((prev) => prev.map((u) => (u.id === currentUser.id ? { ...u, cursorPosition: position } : u)));
-
-      // TODO: Send cursor position to server via websocket
-    },
-    [currentUser],
-  );
-
-  // Handle stroke complete - will send to websocket later
-  const handleStrokeComplete = useCallback((stroke: any) => {
-    // TODO: Send completed stroke to server via websocket
-    console.log("Stroke completed:", stroke.id);
   }, []);
 
   const {
@@ -86,39 +61,179 @@ export default function Home() {
     tool,
     color,
     strokeWidth,
+    addExternalStroke,
+    redrawCanvas,
     initializeContext,
+    loadStrokes,
+    removeLastStroke,
+    getCurrentStroke,
+    startDrawingTouch,
+    drawTouch,
   } = useCanvas({
     userId: currentUser?.id || "anonymous",
-    onStrokeComplete: handleStrokeComplete,
-    onCursorMove: handleCursorMove,
+    onStrokeComplete: undefined,
+    onCursorMove: undefined,
   });
 
-  // Update user drawing state
-  useEffect(() => {
-    if (!currentUser) return;
-    setUsers((prev) => prev.map((u) => (u.id === currentUser.id ? { ...u, isDrawing } : u)));
-  }, [isDrawing, currentUser]);
+  // Socket event handlers
+  const handleStrokeReceived = useCallback(
+    (stroke: Stroke) => {
+      addExternalStroke(stroke);
+    },
+    [addExternalStroke],
+  );
 
-  // Keyboard shortcuts for undo/redo
+  const handleStrokeDrawing = useCallback(
+    (data: { odId: string; points: Point[]; color: string; width: number; tool: string }) => {
+      // For now we just redraw on complete - real-time preview can be added later
+    },
+    [],
+  );
+
+  const handleCanvasState = useCallback(
+    (data: { strokes: Stroke[]; historyIndex: number }) => {
+      loadStrokes(data.strokes);
+    },
+    [loadStrokes],
+  );
+
+  const handleUndo = useCallback(() => {
+    removeLastStroke();
+  }, [removeLastStroke]);
+
+  const handleRedo = useCallback(
+    (stroke: Stroke) => {
+      addExternalStroke(stroke);
+    },
+    [addExternalStroke],
+  );
+
+  const handleClear = useCallback(() => {
+    clearCanvas();
+  }, [clearCanvas]);
+
+  const {
+    isConnected,
+    users,
+    cursors,
+    emitStrokeComplete,
+    emitCursorMove,
+    emitUndo,
+    emitRedo,
+    emitClear,
+    emitDrawingState,
+  } = useSocket({
+    user: currentUser,
+    roomId: ROOM_ID,
+    onStrokeReceived: handleStrokeReceived,
+    onStrokeDrawing: handleStrokeDrawing,
+    onCanvasState: handleCanvasState,
+    onUndo: handleUndo,
+    onRedo: handleRedo,
+    onClear: handleClear,
+  });
+
+  // Emit drawing state changes
+  useEffect(() => {
+    emitDrawingState(isDrawing);
+  }, [isDrawing, emitDrawingState]);
+
+  // Wrap handlers to emit socket events
+  const handleMouseDown = useCallback(
+    (e: React.MouseEvent<HTMLCanvasElement>) => {
+      startDrawing(e);
+    },
+    [startDrawing],
+  );
+
+  const handleMouseMove = useCallback(
+    (e: React.MouseEvent<HTMLCanvasElement>) => {
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+
+      const rect = canvas.getBoundingClientRect();
+      const position = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+      emitCursorMove(position);
+
+      draw(e);
+    },
+    [draw, emitCursorMove, canvasRef],
+  );
+
+  const handleMouseUp = useCallback(() => {
+    const stroke = getCurrentStroke();
+    stopDrawing();
+    if (stroke && stroke.points.length >= 2) {
+      emitStrokeComplete(stroke);
+    }
+  }, [stopDrawing, getCurrentStroke, emitStrokeComplete]);
+
+  // Touch handlers for mobile
+  const handleTouchStart = useCallback(
+    (e: React.TouchEvent<HTMLCanvasElement>) => {
+      startDrawingTouch(e);
+    },
+    [startDrawingTouch],
+  );
+
+  const handleTouchMove = useCallback(
+    (e: React.TouchEvent<HTMLCanvasElement>) => {
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+
+      const rect = canvas.getBoundingClientRect();
+      const touch = e.touches[0];
+      const position = { x: touch.clientX - rect.left, y: touch.clientY - rect.top };
+      emitCursorMove(position);
+
+      drawTouch(e);
+    },
+    [drawTouch, emitCursorMove, canvasRef],
+  );
+
+  const handleTouchEnd = useCallback(() => {
+    const stroke = getCurrentStroke();
+    stopDrawing();
+    if (stroke && stroke.points.length >= 2) {
+      emitStrokeComplete(stroke);
+    }
+  }, [stopDrawing, getCurrentStroke, emitStrokeComplete]);
+
+  const handleUndo_ = useCallback(() => {
+    undo();
+    emitUndo();
+  }, [undo, emitUndo]);
+
+  const handleRedo_ = useCallback(() => {
+    redo();
+    emitRedo();
+  }, [redo, emitRedo]);
+
+  const handleClear_ = useCallback(() => {
+    clearCanvas();
+    emitClear();
+  }, [clearCanvas, emitClear]);
+
+  // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key === "z") {
         if (e.shiftKey) {
-          redo();
+          handleRedo_();
         } else {
-          undo();
+          handleUndo_();
         }
         e.preventDefault();
       }
       if ((e.ctrlKey || e.metaKey) && e.key === "y") {
-        redo();
+        handleRedo_();
         e.preventDefault();
       }
     };
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [undo, redo]);
+  }, [handleUndo_, handleRedo_]);
 
   if (!currentUser) {
     return (
@@ -131,18 +246,15 @@ export default function Home() {
 
   return (
     <div className="app-container">
-      {/* Header */}
       <header className="app-header">
         <h1 className="app-title">Collaborative Canvas</h1>
         <div className="connection-status">
-          <span className="status-dot offline" />
-          <span>Offline Mode</span>
+          <span className={`status-dot ${isConnected ? "online" : "offline"}`} />
+          <span>{isConnected ? "Connected" : "Connecting..."}</span>
         </div>
       </header>
 
-      {/* Main Content */}
       <div className="main-content">
-        {/* Toolbar */}
         <Toolbar
           tool={tool}
           color={color}
@@ -152,26 +264,27 @@ export default function Home() {
           onToolChange={setTool}
           onColorChange={setColor}
           onStrokeWidthChange={setStrokeWidth}
-          onUndo={undo}
-          onRedo={redo}
-          onClear={clearCanvas}
+          onUndo={handleUndo_}
+          onRedo={handleRedo_}
+          onClear={handleClear_}
         />
 
-        {/* Canvas Area */}
         <div className="canvas-wrapper">
           <DrawingCanvas
             canvasRef={canvasRef}
-            onMouseDown={startDrawing}
-            onMouseMove={draw}
-            onMouseUp={stopDrawing}
-            onMouseLeave={stopDrawing}
+            onMouseDown={handleMouseDown}
+            onMouseMove={handleMouseMove}
+            onMouseUp={handleMouseUp}
+            onMouseLeave={handleMouseUp}
             onCanvasReady={initializeContext}
+            onTouchStart={handleTouchStart}
+            onTouchMove={handleTouchMove}
+            onTouchEnd={handleTouchEnd}
           />
           <CursorsOverlay cursors={cursors} currentUserId={currentUser.id} />
         </div>
 
-        {/* Users Panel */}
-        <UsersPanel users={users} currentUserId={currentUser.id} />
+        <UsersPanel users={users.length > 0 ? users : [currentUser]} currentUserId={currentUser.id} />
       </div>
     </div>
   );
