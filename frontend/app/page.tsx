@@ -2,8 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useCanvas } from "./hooks/useCanvas";
-import * as ToolbarModule from "./components/Toolbar";
-const Toolbar = ToolbarModule.default || ToolbarModule;
+import Toolbar from "./components/Toolbar";
 import UsersPanel from "./components/UsersPanel";
 import CursorsOverlay from "./components/CursorsOverlay";
 import DrawingCanvas from "./components/DrawingCanvas";
@@ -87,6 +86,7 @@ export default function Home() {
     tool,
     color,
     strokeWidth,
+    initializeContext,
   } = useCanvas({
     userId: currentUser?.id || "anonymous",
     onStrokeComplete: handleStrokeComplete,
@@ -165,6 +165,7 @@ export default function Home() {
             onMouseMove={draw}
             onMouseUp={stopDrawing}
             onMouseLeave={stopDrawing}
+            onCanvasReady={initializeContext}
           />
           <CursorsOverlay cursors={cursors} currentUserId={currentUser.id} />
         </div>

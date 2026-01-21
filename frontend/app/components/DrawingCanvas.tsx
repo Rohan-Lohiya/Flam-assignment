@@ -8,6 +8,7 @@ interface DrawingCanvasProps {
   onMouseMove: (e: React.MouseEvent<HTMLCanvasElement>) => void;
   onMouseUp: () => void;
   onMouseLeave: () => void;
+  onCanvasReady?: () => void;
 }
 
 export default function DrawingCanvas({
@@ -16,6 +17,7 @@ export default function DrawingCanvas({
   onMouseMove,
   onMouseUp,
   onMouseLeave,
+  onCanvasReady,
 }: DrawingCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -47,6 +49,9 @@ export default function DrawingCanvas({
         ctx.lineCap = "round";
         ctx.lineJoin = "round";
       }
+
+      // Notify that canvas is ready
+      onCanvasReady?.();
     };
 
     // Initial setup
@@ -54,7 +59,7 @@ export default function DrawingCanvas({
 
     window.addEventListener("resize", handleResize);
     return () => window.removeEventListener("resize", handleResize);
-  }, [canvasRef]);
+  }, [canvasRef, onCanvasReady]);
 
   return (
     <div ref={containerRef} className="canvas-container">

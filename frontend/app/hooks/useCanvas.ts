@@ -33,6 +33,7 @@ interface UseCanvasReturn {
   strokeWidth: number;
   addExternalStroke: (stroke: Stroke) => void;
   redrawCanvas: () => void;
+  initializeContext: () => void;
 }
 
 export function useCanvas({ userId, onStrokeComplete, onCursorMove }: UseCanvasProps): UseCanvasReturn {
@@ -56,15 +57,10 @@ export function useCanvas({ userId, onStrokeComplete, onCursorMove }: UseCanvasP
   const [canUndo, setCanUndo] = useState(false);
   const [canRedo, setCanRedo] = useState(false);
 
-  // Initialize canvas context
-  useEffect(() => {
+  // Initialize canvas context - called when canvas is ready/resized
+  const initializeContext = useCallback(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-
-    // Set canvas size to match its display size
-    const rect = canvas.getBoundingClientRect();
-    canvas.width = rect.width;
-    canvas.height = rect.height;
 
     const context = canvas.getContext("2d");
     if (!context) return;
@@ -325,5 +321,6 @@ export function useCanvas({ userId, onStrokeComplete, onCursorMove }: UseCanvasP
     strokeWidth,
     addExternalStroke,
     redrawCanvas,
+    initializeContext,
   };
 }
