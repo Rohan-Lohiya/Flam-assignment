@@ -30,21 +30,28 @@ A multi-user drawing application where multiple people can draw simultaneously o
 
 ```bash
 git clone <repo-url>
+cd collaborative-canvas
 ```
 
-2. Install backend dependencies:
+2. Setup backend:
 
 ```bash
 cd backend
 npm install
+cp .env.example .env
 ```
 
-3. Install frontend dependencies:
+Edit `.env` if you need to change the port or CORS settings.
+
+3. Setup frontend:
 
 ```bash
-cd frontend
+cd ../frontend
 npm install
+cp .env.example .env.local
 ```
+
+Edit `.env.local` to point to your backend URL if different from `http://localhost:5000`.
 
 ### Running the Application
 
@@ -72,6 +79,36 @@ Frontend runs on http://localhost:3000
 2. Each tab will be assigned a unique username and color
 3. Draw in one tab and see the strokes appear in real-time in other tabs
 4. Try undo/redo - it syncs across all users
+
+## Environment Variables
+
+### Backend (.env)
+
+```bash
+PORT=5000                                    # Server port
+CORS_ORIGIN=http://localhost:3000            # Frontend URL(s) for CORS (comma-separated for multiple)
+NODE_ENV=development                         # Environment
+```
+
+**For production deployment:**
+
+```bash
+PORT=5000
+CORS_ORIGIN=https://your-frontend.vercel.app,https://www.your-domain.com
+NODE_ENV=production
+```
+
+### Frontend (.env.local)
+
+```bash
+NEXT_PUBLIC_SERVER_URL=http://localhost:5000   # Backend API URL
+```
+
+**For production deployment:**
+
+```bash
+NEXT_PUBLIC_SERVER_URL=https://your-backend-server.com
+```
 
 ## Project Structure
 

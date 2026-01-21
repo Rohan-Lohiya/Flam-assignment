@@ -6,16 +6,24 @@ const { Server } = require("socket.io");
 const app = express();
 const server = http.createServer(app);
 
+const allowedOrigins = process.env.CORS_ORIGIN
+  ? process.env.CORS_ORIGIN.split(",").map((origin) => origin.trim())
+  : ["http://localhost:3000"];
+
 const io = new Server(server, {
   cors: {
-    origin: ["http://localhost:3000"],
+    origin: allowedOrigins,
     methods: ["GET", "POST"],
   },
 });
 
 const PORT = process.env.PORT || 5000;
 
-app.use(cors());
+app.use(
+  cors({
+    origin: allowedOrigins,
+  }),
+);
 app.use(express.json());
 
 // Store drawing state and users per room
